@@ -130,7 +130,7 @@ function tryGetAppropriateTime(possibleRobTime, duration) {
 
 function* setNextRobDayAndTime(appropriateTimes, duration) {
     for (let day of appropriateTimes.keys()) {
-        let nextRobTimeGen = geat(appropriateTimes, day, duration);
+        let nextRobTimeGen = tryGetNextRobTime(appropriateTimes, day, duration);
         let res = nextRobTimeGen.next();
         while (res.value) {
             yield res.value;
@@ -142,7 +142,7 @@ function* setNextRobDayAndTime(appropriateTimes, duration) {
     }
 }
 
-function* geat(appropriateTimes, day, duration) {
+function* tryGetNextRobTime(appropriateTimes, day, duration) {
     for (let time of appropriateTimes.get(day)) {
         robDay = day;
         robTime = time[0];
