@@ -34,9 +34,11 @@ function convertToBankTimeZone(dayAndTime, bankTimeZone) {
     let hours = timeAndZone[0].slice(0, separatorIndex);
     let minutes = timeAndZone[0].slice(separatorIndex + 1);
     let trueHours = parseInt(hours) + parseInt(bankTimeZone) - parseInt(timeAndZone[1]);
-
-    let trueDay = days[(days.indexOf(dayAndTime[0]) + Math.floor(trueHours / 24)) % days.length];
-    let trueTime = trueHours + ':' + minutes;
+    let nextDayIndex = days.indexOf(dayAndTime[0]) + Math.floor(trueHours / 24) + days.length;
+    let trueDay = days[nextDayIndex % days.length];
+    trueHours = (trueHours + 24) % 24;
+    let trueTime = Math.floor(trueHours / 10) === 0 ? '0' : '';
+    trueTime += trueHours + ':' + minutes;
 
     return [trueDay, trueTime];
 }
@@ -151,7 +153,6 @@ function* getNextApprTime(apprTimes) {
  * @returns {Object}
  */
 function getAppropriateMoment(schedule, duration, workingHours) {
-    // console.info(schedule, duration, workingHours);
     let bankWorkFrom = parseHours(workingHours.from);
     let bankWorkTo = parseHours(workingHours.to);
     let busyData = parseSchedule(schedule, bankWorkFrom[1]);
