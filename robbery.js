@@ -100,7 +100,9 @@ function addThirtyMinutes(time) {
     let minute = parseInt(time.slice(sepIndex + 1));
     minute += 30;
     hour += Math.floor(minute / 60);
+    hour = Math.floor(hour / 10) === 0 ? '0' + hour : hour;
     minute %= 60;
+    minute = Math.floor(minute / 10) === 0 ? '0' + minute : minute;
 
     return hour + ':' + minute;
 }
