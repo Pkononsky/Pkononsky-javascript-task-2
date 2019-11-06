@@ -7,54 +7,52 @@
 const isStar = true;
 
 const days = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
+const robberyDay = ['ПН', 'ВТ', 'СР'];
+const decimal = 10;
+const hoursInDay = 24;
+const minutesInHour = 60;
+const dayStart = '00:00';
+const dayEnd = '23:59';
 
 function getEmptyBusyData() {
-    return new Map([
-        ['ПН', []],
-        ['ВТ', []],
-        ['СР', []],
-        ['ЧТ', []],
-        ['ПТ', []],
-        ['СБ', []],
-        ['ВС', []]
-    ]);
+    return new Map(days.map(day => [day, []]));
 }
 
-function parseHours(hours) {
-    let plusIndex = hours.indexOf('+');
-    let time = hours.slice(0, plusIndex);
-    let timeZone = hours.slice(plusIndex + 1);
+function getTimeAndZone(hours) {
+    let [time, timeZone] = hours.split('+');
 
-    return [time, timeZone];
+    return { time, timeZone };
 }
 
-function convertToBankTimeZone(dayAndTime, bankTimeZone) {
-    let timeAndZone = parseHours(dayAndTime[1]);
-    let separatorIndex = timeAndZone[0].indexOf(':');
-    let hours = timeAndZone[0].slice(0, separatorIndex);
-    let minutes = timeAndZone[0].slice(separatorIndex + 1);
-    let trueHours = parseInt(hours) + parseInt(bankTimeZone) - parseInt(timeAndZone[1]);
-    let nextDayIndex = days.indexOf(dayAndTime[0]) + Math.floor(trueHours / 24) + days.length;
-    let trueDay = days[nextDayIndex % days.length];
-    trueHours = (trueHours + 24) % 24;
-    let trueTime = Math.floor(trueHours / 10) === 0 ? '0' : '';
-    trueTime += trueHours + ':' + minutes;
+function convertToBankTimeZone({ day, timeAndZone, bankTimeZone }) {
+    const { time, timeZone } = getTimeAndZone(timeAndZone);
+    let [hours, minutes] = time.split(':');
+    let timeZoneDiff = parseInt(bankTimeZone, decimal) - parseInt(timeZone, decimal);
+    let hoursInBankZone = parseInt(hours, decimal) + timeZoneDiff;
+    let nextDayIndex = days.indexOf(day) + Math.floor(hoursInBankZone / hoursInDay) + days.length;
+    let dayInBankZone = days[nextDayIndex % days.length];
+    hoursInBankZone = (hoursInBankZone + hoursInDay) % hoursInDay;
+    hoursInBankZone = getFullTimePart(hoursInBankZone);
+    let timeInBankZone = `${hoursInBankZone}:${minutes}`;
 
-    return [trueDay, trueTime];
+    return [dayInBankZone, timeInBankZone];
 }
 
-function addGap(dayTimeFrom, dayTimeTo, result) {
+function getGaps(dayTimeFrom, dayTimeTo) {
+    let result = getEmptyBusyData();
     if (dayTimeFrom[0] === dayTimeTo[0]) {
-        result.get(dayTimeFrom[0]).push([dayTimeFrom[1], dayTimeTo[1]]);
+        result.set(dayTimeFrom[0], [[dayTimeFrom[1], dayTimeTo[1]]]);
     } else {
-        result.get(dayTimeFrom[0]).push([dayTimeFrom[1], '23:59']);
+        result.set(dayTimeFrom[0], [[dayTimeFrom[1], dayEnd]]);
         let currentDay = days[(days.indexOf(dayTimeFrom[0]) + 1) % days.length];
         while (currentDay !== dayTimeTo[0]) {
-            result.get(currentDay).push(['00:00', '23:59']);
+            result.set(currentDay, [[dayStart, dayEnd]]);
             currentDay = days[(days.indexOf(currentDay) + 1) % days.length];
         }
-        result.get(dayTimeTo[0]).push(['00:00', dayTimeTo[1]]);
+        result.set(dayTimeTo[0], [[dayStart, dayTimeTo[1]]]);
     }
+
+    return result;
 }
 
 function parseSchedule(schedule, bankTimeZone) {
@@ -63,21 +61,24 @@ function parseSchedule(schedule, bankTimeZone) {
     for (let busyTimes of scheduleVal) {
         let busyTimesVal = Object.values(busyTimes);
         for (let busyTime of busyTimesVal) {
-            let dayTimeFrom = convertToBankTimeZone(busyTime.from.split(' '), bankTimeZone);
-            let dayTimeTo = convertToBankTimeZone(busyTime.to.split(' '), bankTimeZone);
-            addGap(dayTimeFrom, dayTimeTo, result);
+            let [day, timeAndZone] = busyTime.from.split(' ');
+            let dayTimeFrom = convertToBankTimeZone({ day, timeAndZone, bankTimeZone });
+            [day, timeAndZone] = busyTime.to.split(' ');
+            let dayTimeTo = convertToBankTimeZone({ day, timeAndZone, bankTimeZone });
+            let gaps = getGaps(dayTimeFrom, dayTimeTo);
+            result.forEach((value, key) => value.push(...gaps.get(key)));
         }
     }
 
     return result;
 }
 
-function getPossibleRobberyTime(busyData, bankWorkFrom, bankWorkTo, day) {
+function getPossibleRobberyTime(busyData, bankWorkFrom, bankWorkTo) {
     let result = [];
-    busyData.get(day).push([bankWorkTo, bankWorkTo]);
-    busyData.get(day).sort();
+    busyData.push([bankWorkTo, bankWorkTo]);
+    busyData.sort();
     let currentTime = bankWorkFrom;
-    for (let busyTime of busyData.get(day)) {
+    for (let busyTime of busyData) {
         let timeFrom = busyTime[0];
         let timeTo = busyTime[1];
         if (currentTime >= timeFrom) {
@@ -94,31 +95,36 @@ function getPossibleRobberyTime(busyData, bankWorkFrom, bankWorkTo, day) {
     return result;
 }
 
-function addThirtyMinutes(time) {
-    let sepIndex = time.indexOf(':');
-    let hour = parseInt(time.slice(0, sepIndex));
-    let minute = parseInt(time.slice(sepIndex + 1));
-    minute += 30;
-    hour += Math.floor(minute / 60);
-    hour = Math.floor(hour / 10) === 0 ? '0' + hour : hour;
-    minute %= 60;
-    minute = Math.floor(minute / 10) === 0 ? '0' + minute : minute;
+function getFullTimePart(timePart) {
+    return Math.floor(timePart / 10) === 0 ? '0' + timePart : timePart;
+}
 
-    return hour + ':' + minute;
+function addThirtyMinutes(time) {
+    let [hour, minute] = time.split(':');
+    hour = parseInt(hour, decimal);
+    minute = parseInt(minute, decimal);
+    minute += 30;
+    hour += Math.floor(minute / minutesInHour);
+    hour = getFullTimePart(hour);
+    minute %= minutesInHour;
+    minute = getFullTimePart(minute);
+
+    return `${hour}:${minute}`;
 }
 
 function getDuration(time) {
     let start = time[0].split(':');
     let end = time[1].split(':');
-    let hStart = parseInt(start[0]);
-    let mStart = parseInt(start[1]);
-    let hEnd = parseInt(end[0]);
-    let mEnd = parseInt(end[1]);
+    let hStart = parseInt(start[0], decimal);
+    let mStart = parseInt(start[1], decimal);
+    let hEnd = parseInt(end[0], decimal);
+    let mEnd = parseInt(end[1], decimal);
 
-    return (hEnd - hStart) * 60 + (mEnd - mStart);
+    return (hEnd - hStart) * minutesInHour + (mEnd - mStart);
 }
 
-function tryGetAllAppropriateTime(possibleTimes, duration, result, day) {
+function tryGetAllAppropriateTime(possibleTimes, duration, day) {
+    let result = [];
     for (let possibleTime of possibleTimes) {
         let currentTime = possibleTime;
         let dur = getDuration(currentTime);
@@ -128,13 +134,15 @@ function tryGetAllAppropriateTime(possibleTimes, duration, result, day) {
             dur = getDuration(currentTime);
         }
     }
+
+    return result;
 }
 
 function getAppropriateRobberyTime(busyData, bankWorkFrom, bankWorkTo, duration) {
     let result = [];
-    for (let day of ['ПН', 'ВТ', 'СР']) {
-        let possibleTimes = getPossibleRobberyTime(busyData, bankWorkFrom, bankWorkTo, day);
-        tryGetAllAppropriateTime(possibleTimes, duration, result, day);
+    for (let day of robberyDay) {
+        let possibleTimes = getPossibleRobberyTime(busyData.get(day), bankWorkFrom, bankWorkTo);
+        result = result.concat(tryGetAllAppropriateTime(possibleTimes, duration, day));
     }
 
     return result;
@@ -155,12 +163,12 @@ function* getNextApprTime(apprTimes) {
  * @returns {Object}
  */
 function getAppropriateMoment(schedule, duration, workingHours) {
-    let bankWorkFrom = parseHours(workingHours.from);
-    let bankWorkTo = parseHours(workingHours.to);
-    let busyData = parseSchedule(schedule, bankWorkFrom[1]);
-    let apprTimes = getAppropriateRobberyTime(busyData, bankWorkFrom[0], bankWorkTo[0], duration);
+    let bankWorkFrom = getTimeAndZone(workingHours.from);
+    let bankWorkTo = getTimeAndZone(workingHours.to);
+    let busyData = parseSchedule(schedule, bankWorkFrom.timeZone);
+    let robGaps = getAppropriateRobberyTime(busyData, bankWorkFrom.time, bankWorkTo.time, duration);
 
-    let apprTimesEnum = getNextApprTime(apprTimes);
+    let apprTimesEnum = getNextApprTime(robGaps);
     let robDayTime = apprTimesEnum.next().value;
 
     return {
@@ -170,7 +178,7 @@ function getAppropriateMoment(schedule, duration, workingHours) {
          * @returns {Boolean}
          */
         exists: function () {
-            return apprTimes.length !== 0;
+            return robGaps.length !== 0;
         },
 
         /**
@@ -180,14 +188,14 @@ function getAppropriateMoment(schedule, duration, workingHours) {
          * @returns {String}
          */
         format: function (template) {
-            if (apprTimes.length === 0) {
+            if (robGaps.length === 0) {
                 return '';
             }
             let answ = template;
-            answ = answ.replace('%DD', robDayTime[0]);
             let robTime = robDayTime[1].split(':');
-            answ = answ.replace('%HH', robTime[0]);
-            answ = answ.replace('%MM', robTime[1]);
+            answ = answ.replace('%DD', robDayTime[0])
+                .replace('%HH', robTime[0])
+                .replace('%MM', robTime[1]);
 
             return answ;
         },
@@ -199,11 +207,12 @@ function getAppropriateMoment(schedule, duration, workingHours) {
          */
         tryLater: function () {
             let nextRobDayTime = apprTimesEnum.next();
-            if (!nextRobDayTime.done) {
+            let isDone = nextRobDayTime.done;
+            if (!isDone) {
                 robDayTime = nextRobDayTime.value;
             }
 
-            return !nextRobDayTime.done;
+            return !isDone;
         }
     };
 }
