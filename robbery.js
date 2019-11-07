@@ -6,16 +6,16 @@
  */
 const isStar = true;
 
-const days = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
-const robberyDay = ['ПН', 'ВТ', 'СР'];
-const decimal = 10;
-const hoursInDay = 24;
-const minutesInHour = 60;
-const dayStart = '00:00';
-const dayEnd = '23:59';
+const DAYS = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
+const ROBBERYDAYS = ['ПН', 'ВТ', 'СР'];
+const DECIMAL = 10;
+const HOURSINDAY = 24;
+const MINUTESINHOUR = 60;
+const DAYSTART = '00:00';
+const DAYEND = '23:59';
 
 function getEmptyBusyData() {
-    return new Map(days.map(day => [day, []]));
+    return new Map(DAYS.map(day => [day, []]));
 }
 
 function getTimeAndZone(hours) {
@@ -24,32 +24,52 @@ function getTimeAndZone(hours) {
     return { time, timeZone };
 }
 
-function convertToBankTimeZone({ day, timeAndZone, bankTimeZone }) {
-    const { time, timeZone } = getTimeAndZone(timeAndZone);
+function getHoursAndMinutes(time) {
     let [hours, minutes] = time.split(':');
-    let timeZoneDiff = parseInt(bankTimeZone, decimal) - parseInt(timeZone, decimal);
-    let hoursInBankZone = parseInt(hours, decimal) + timeZoneDiff;
-    let nextDayIndex = days.indexOf(day) + Math.floor(hoursInBankZone / hoursInDay) + days.length;
-    let dayInBankZone = days[nextDayIndex % days.length];
-    hoursInBankZone = (hoursInBankZone + hoursInDay) % hoursInDay;
-    hoursInBankZone = getFullTimePart(hoursInBankZone);
-    let timeInBankZone = `${hoursInBankZone}:${minutes}`;
 
-    return [dayInBankZone, timeInBankZone];
+    return { hours, minutes };
 }
 
-function getGaps(dayTimeFrom, dayTimeTo) {
+function getDayInBankZone(day, hoursInBankZone) {
+    let skipSize = Math.floor(hoursInBankZone / HOURSINDAY) + DAYS.length;
+
+    return getDayWithSkip(day, skipSize);
+}
+
+function getTimeInBankZone(hoursInBankZone, minutes) {
+    hoursInBankZone = (hoursInBankZone + HOURSINDAY) % HOURSINDAY;
+    hoursInBankZone = getFullTimePart(hoursInBankZone);
+
+    return `${hoursInBankZone}:${minutes}`;
+}
+
+function convertToBankTimeZone({ day, timeAndZone, bankTimeZone }) {
+    const { time, timeZone } = getTimeAndZone(timeAndZone);
+    let { hours, minutes } = getHoursAndMinutes(time);
+    let timeZoneDiff = parseInt(bankTimeZone, DECIMAL) - parseInt(timeZone, DECIMAL);
+    let hoursInBankZone = parseInt(hours, DECIMAL) + timeZoneDiff;
+    let dayInBankZone = getDayInBankZone(day, hoursInBankZone);
+    let timeInBankZone = getTimeInBankZone(hoursInBankZone, minutes);
+
+    return { dayInBankZone, timeInBankZone };
+}
+
+function getDayWithSkip(day, skipSize) {
+    return DAYS[(DAYS.indexOf(day) + skipSize) % DAYS.length];
+}
+
+function getBusyData(from, to) {
     let result = getEmptyBusyData();
-    if (dayTimeFrom[0] === dayTimeTo[0]) {
-        result.set(dayTimeFrom[0], [[dayTimeFrom[1], dayTimeTo[1]]]);
+    if (from.dayInBankZone === to.dayInBankZone) {
+        result.set(from.dayInBankZone, [[from.timeInBankZone, to.timeInBankZone]]);
     } else {
-        result.set(dayTimeFrom[0], [[dayTimeFrom[1], dayEnd]]);
-        let currentDay = days[(days.indexOf(dayTimeFrom[0]) + 1) % days.length];
-        while (currentDay !== dayTimeTo[0]) {
-            result.set(currentDay, [[dayStart, dayEnd]]);
-            currentDay = days[(days.indexOf(currentDay) + 1) % days.length];
+        result.set(from.dayInBankZone, [[from.timeInBankZone, DAYEND]]);
+        let currentDay = getDayWithSkip(from.dayInBankZone, 1);
+        while (currentDay !== to.dayInBankZone) {
+            result.set(currentDay, [[DAYSTART, DAYEND]]);
+            currentDay = getDayWithSkip(currentDay, 1);
         }
-        result.set(dayTimeTo[0], [[dayStart, dayTimeTo[1]]]);
+        result.set(to.dayInBankZone, [[DAYSTART, to.timeInBankZone]]);
     }
 
     return result;
@@ -65,7 +85,7 @@ function parseSchedule(schedule, bankTimeZone) {
             let dayTimeFrom = convertToBankTimeZone({ day, timeAndZone, bankTimeZone });
             [day, timeAndZone] = busyTime.to.split(' ');
             let dayTimeTo = convertToBankTimeZone({ day, timeAndZone, bankTimeZone });
-            let gaps = getGaps(dayTimeFrom, dayTimeTo);
+            let gaps = getBusyData(dayTimeFrom, dayTimeTo);
             result.forEach((value, key) => value.push(...gaps.get(key)));
         }
     }
@@ -75,12 +95,8 @@ function parseSchedule(schedule, bankTimeZone) {
 
 function getPossibleRobberyTime(busyData, bankWorkFrom, bankWorkTo) {
     let result = [];
-    busyData.push([bankWorkTo, bankWorkTo]);
-    busyData.sort();
     let currentTime = bankWorkFrom;
-    for (let busyTime of busyData) {
-        let timeFrom = busyTime[0];
-        let timeTo = busyTime[1];
+    for (let [timeFrom, timeTo] of [...busyData, [bankWorkTo, bankWorkTo]].sort()) {
         if (currentTime >= timeFrom) {
             currentTime = currentTime < timeTo ? timeTo : currentTime;
         } else {
@@ -96,42 +112,39 @@ function getPossibleRobberyTime(busyData, bankWorkFrom, bankWorkTo) {
 }
 
 function getFullTimePart(timePart) {
-    return Math.floor(timePart / 10) === 0 ? '0' + timePart : timePart;
+    return `0${timePart}`.slice(-2);
 }
 
 function addThirtyMinutes(time) {
-    let [hour, minute] = time.split(':');
-    hour = parseInt(hour, decimal);
-    minute = parseInt(minute, decimal);
-    minute += 30;
-    hour += Math.floor(minute / minutesInHour);
-    hour = getFullTimePart(hour);
-    minute %= minutesInHour;
-    minute = getFullTimePart(minute);
+    let { hours, minutes } = getHoursAndMinutes(time);
+    hours = parseInt(hours, DECIMAL);
+    minutes = parseInt(minutes, DECIMAL);
+    minutes += 30;
+    hours += Math.floor(minutes / MINUTESINHOUR);
+    hours = getFullTimePart(hours);
+    minutes %= MINUTESINHOUR;
+    minutes = getFullTimePart(minutes);
 
-    return `${hour}:${minute}`;
+    return `${hours}:${minutes}`;
 }
 
-function getDuration(time) {
-    let start = time[0].split(':');
-    let end = time[1].split(':');
-    let hStart = parseInt(start[0], decimal);
-    let mStart = parseInt(start[1], decimal);
-    let hEnd = parseInt(end[0], decimal);
-    let mEnd = parseInt(end[1], decimal);
+function getGapDuration(gapStart, gapEnd) {
+    let start = getHoursAndMinutes(gapStart);
+    let end = getHoursAndMinutes(gapEnd);
+    let [hStart, mStart] = Object.values(start).map(value => parseInt(value, DECIMAL));
+    let [hEnd, mEnd] = Object.values(end).map(value => parseInt(value, DECIMAL));
 
-    return (hEnd - hStart) * minutesInHour + (mEnd - mStart);
+    return (hEnd - hStart) * MINUTESINHOUR + (mEnd - mStart);
 }
 
 function tryGetAllAppropriateTime(possibleTimes, duration, day) {
     let result = [];
-    for (let possibleTime of possibleTimes) {
-        let currentTime = possibleTime;
-        let dur = getDuration(currentTime);
+    for (let [gapStart, gapEnd] of possibleTimes) {
+        let dur = getGapDuration(gapStart, gapEnd);
         while (dur >= duration) {
-            result.push([day, currentTime[0]]);
-            currentTime[0] = addThirtyMinutes(currentTime[0]);
-            dur = getDuration(currentTime);
+            result.push([day, gapStart]);
+            gapStart = addThirtyMinutes(gapStart);
+            dur = getGapDuration(gapStart, gapEnd);
         }
     }
 
@@ -140,7 +153,7 @@ function tryGetAllAppropriateTime(possibleTimes, duration, day) {
 
 function getAppropriateRobberyTime(busyData, bankWorkFrom, bankWorkTo, duration) {
     let result = [];
-    for (let day of robberyDay) {
+    for (let day of ROBBERYDAYS) {
         let possibleTimes = getPossibleRobberyTime(busyData.get(day), bankWorkFrom, bankWorkTo);
         result = result.concat(tryGetAllAppropriateTime(possibleTimes, duration, day));
     }
@@ -191,13 +204,14 @@ function getAppropriateMoment(schedule, duration, workingHours) {
             if (robGaps.length === 0) {
                 return '';
             }
-            let answ = template;
-            let robTime = robDayTime[1].split(':');
-            answ = answ.replace('%DD', robDayTime[0])
-                .replace('%HH', robTime[0])
-                .replace('%MM', robTime[1]);
+            let [robDay, robTime] = robDayTime;
+            let { hours, minutes } = getHoursAndMinutes(robTime);
 
-            return answ;
+            return template
+                .replace('%DD', robDay)
+                .replace('%HH', hours)
+                .replace('%MM', minutes);
+
         },
 
         /**
