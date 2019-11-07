@@ -7,12 +7,12 @@
 const isStar = true;
 
 const DAYS = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];
-const ROBBERYDAYS = ['ПН', 'ВТ', 'СР'];
+const ROBBERY_DAYS = ['ПН', 'ВТ', 'СР'];
 const DECIMAL = 10;
-const HOURSINDAY = 24;
-const MINUTESINHOUR = 60;
-const DAYSTART = '00:00';
-const DAYEND = '23:59';
+const HOURS_IN_DAY = 24;
+const MINUTES_IN_HOUR = 60;
+const DAY_START = '00:00';
+const DAY_END = '23:59';
 
 function getEmptyBusyData() {
     return new Map(DAYS.map(day => [day, []]));
@@ -31,13 +31,13 @@ function getHoursAndMinutes(time) {
 }
 
 function getDayInBankZone(day, hoursInBankZone) {
-    let skipSize = Math.floor(hoursInBankZone / HOURSINDAY) + DAYS.length;
+    let skipSize = Math.floor(hoursInBankZone / HOURS_IN_DAY) + DAYS.length;
 
     return getDayWithSkip(day, skipSize);
 }
 
 function getTimeInBankZone(hoursInBankZone, minutes) {
-    hoursInBankZone = (hoursInBankZone + HOURSINDAY) % HOURSINDAY;
+    hoursInBankZone = (hoursInBankZone + HOURS_IN_DAY) % HOURS_IN_DAY;
     hoursInBankZone = getFullTimePart(hoursInBankZone);
 
     return `${hoursInBankZone}:${minutes}`;
@@ -63,13 +63,13 @@ function getBusyData(from, to) {
     if (from.dayInBankZone === to.dayInBankZone) {
         result.set(from.dayInBankZone, [[from.timeInBankZone, to.timeInBankZone]]);
     } else {
-        result.set(from.dayInBankZone, [[from.timeInBankZone, DAYEND]]);
+        result.set(from.dayInBankZone, [[from.timeInBankZone, DAY_END]]);
         let currentDay = getDayWithSkip(from.dayInBankZone, 1);
         while (currentDay !== to.dayInBankZone) {
-            result.set(currentDay, [[DAYSTART, DAYEND]]);
+            result.set(currentDay, [[DAY_START, DAY_END]]);
             currentDay = getDayWithSkip(currentDay, 1);
         }
-        result.set(to.dayInBankZone, [[DAYSTART, to.timeInBankZone]]);
+        result.set(to.dayInBankZone, [[DAY_START, to.timeInBankZone]]);
     }
 
     return result;
@@ -120,9 +120,9 @@ function addThirtyMinutes(time) {
     hours = parseInt(hours, DECIMAL);
     minutes = parseInt(minutes, DECIMAL);
     minutes += 30;
-    hours += Math.floor(minutes / MINUTESINHOUR);
+    hours += Math.floor(minutes / MINUTES_IN_HOUR);
     hours = getFullTimePart(hours);
-    minutes %= MINUTESINHOUR;
+    minutes %= MINUTES_IN_HOUR;
     minutes = getFullTimePart(minutes);
 
     return `${hours}:${minutes}`;
@@ -134,7 +134,7 @@ function getGapDuration(gapStart, gapEnd) {
     let [hStart, mStart] = Object.values(start).map(value => parseInt(value, DECIMAL));
     let [hEnd, mEnd] = Object.values(end).map(value => parseInt(value, DECIMAL));
 
-    return (hEnd - hStart) * MINUTESINHOUR + (mEnd - mStart);
+    return (hEnd - hStart) * MINUTES_IN_HOUR + (mEnd - mStart);
 }
 
 function tryGetAllAppropriateTime(possibleTimes, duration, day) {
@@ -153,7 +153,7 @@ function tryGetAllAppropriateTime(possibleTimes, duration, day) {
 
 function getAppropriateRobberyTime(busyData, bankWorkFrom, bankWorkTo, duration) {
     let result = [];
-    for (let day of ROBBERYDAYS) {
+    for (let day of ROBBERY_DAYS) {
         let possibleTimes = getPossibleRobberyTime(busyData.get(day), bankWorkFrom, bankWorkTo);
         result = result.concat(tryGetAllAppropriateTime(possibleTimes, duration, day));
     }
